@@ -1,0 +1,244 @@
+---
+title: "TMO Survery Results"
+author: "Frank Bertsch"
+date: "October 11, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+
+knitr::opts_chunk$set(echo = TRUE)
+dat <- read.csv('tmo_survey_results.csv', stringsAsFactors = F) %>%
+  rename(has_used = Have.you.used.any.of.the.various.telemetry.mozilla.org.sites.at.some.point.during.the.last.6.months.,
+         user_type = Are.you.a.Mozilla.employee.or.a.volunteer.,
+         role = What.is.your.role.within.the.Mozilla.community.,
+         what_prevented = What.has.prevented.you.from.using.TMO.,
+         knows_help = Do.you.know.who.to.ask.for.help.or.where.the.documentation.for.TMO.lives.,
+         knows_help_2 = Do.you.know.who.to.ask.for.help.or.where.the.documentation.for.TMO.lives..1,
+         what_cause_to_use = What.would.make.you.more.likely.to.use.TMO.in.the.future.,
+         frequency = How.frequently.do.you.use.TMO.or.one.of.the.related.sites.,
+         products = What.features.of.TMO.have.you.used.,
+         questions = What.question.were.you.trying.to.answer.when.using.TMO.,
+         satisfied = Overall..were.you.satisfied.with.your.experience.,
+         timely_response = If.you.ran.into.problems..were.you.able.to.get.help.in.a.satisfactory.amount.of.time.,
+         like = What.do.you.like.about.about.TMO.,
+         dislike = What.do.you.dislike.about.TMO.,
+         comments = Do.you.have.any.other.comments.,
+         followup = If.you.would.like.someone.to.follow.up.with.you.directly..please.provide.your.email.address.) %>%
+  mutate(knows_help = mapply(function(a,b) if(a == "") b else a, knows_help, knows_help_2)) %>%
+  select(-knows_help_2)
+
+```
+
+#Baseline Results
+
+First compare number of uses of data products. Volunteer usage is lower in the survey.
+
+```{r, echo=FALSE}
+ggplot(dat, aes(x = has_used, fill=user_type)) + 
+  geom_bar(stat="count") + 
+  ggtitle("Total Usage")
+```
+
+Next break up usage per product, by role. Here we can see the egineer use TMO, and do some custom analysis on *tmo, while the managers mainly use stmo.
+
+```{r, echo=FALSE}
+dat %>%
+  mutate(products = strsplit(products, ", ")) %>%
+  unnest(products) %>%
+  filter(role %in% c("Engineering", "Product/Project Management")) %>%
+  ggplot(aes(x = products)) +
+    geom_bar(stat="count") + 
+    facet_wrap(~ role, ncol=2) +
+    theme(axis.text.x = element_text(angle = 330, hjust = 0.1)) + 
+    ggtitle("Usage per product - role")
+```
+
+Why haven't people use? Might be because they don't know enough about the platform.
+
+```{r, echo=FALSE}
+
+ggplot(dat, aes(x = has_used, fill=knows_help)) + 
+  geom_bar(stat="count") + 
+  ggtitle("Comparison of use platform or haven't, and know where help is or don't")
+```
+
+
+No matter what platform the user uses, it seems equally likely they don't know how to get help.
+
+```{r, echo=FALSE}
+dat %>%
+  mutate(products = strsplit(products, ", ")) %>%
+  unnest(products) %>%
+  ggplot(aes(x = products, fill = knows_help)) +
+    geom_bar(stat="count") +
+    theme(axis.text.x = element_text(angle = 330, hjust = 0.1))
+```
+
+How often do people use our platform?
+
+```{r, echo=FALSE}
+dat %>%
+  mutate(frequency = strsplit(frequency, ", ")) %>%
+  unnest(frequency) %>%
+  ggplot(aes(x = frequency)) +
+    geom_bar(stat="count") +
+    theme(axis.text.x = element_text(angle = 330, hjust = 0.1)) + 
+    ggtitle("Histogram of frequency of use of data platform")
+```
+    
+How many products do they use? It seems most people branch out a bit to find what they need.
+
+```{r, echo=FALSE}
+dat %>%
+  mutate(products = strsplit(products, ", ")) %>%
+  mutate(product_use_count = sapply(products, length)) %>%
+  mutate(product_use_count = sapply(product_use_count, function(p) if (p == 0) {"0"} else if (p == 1) {"1"} else {"2+"})) %>%
+  ggplot(aes(x = product_use_count)) +
+    geom_bar(stat="count") +
+    ggtitle("Histogram of number of products used per person") + ylab("Number of Products Used")
+```
+
+What is the frequency of use across products? The heaviest consistent users are custom dashboards and stmo.
+
+```{r, echo=FALSE}
+dat %>%
+  mutate(products = strsplit(products, ", ")) %>%
+  unnest(products) %>%
+  mutate(frequency = strsplit(frequency, ", ")) %>%
+  unnest(frequency) %>%
+  ggplot(aes(x = frequency)) +
+    geom_bar(stat="count") +
+    theme(axis.text.x = element_text(angle = 330, hjust = 0.1)) +
+    facet_wrap(~ products, ncol = 3) +
+    ylab("Frequency of Use")
+```
+
+How satisfied were users overall?
+
+```{r, echo=FALSE}
+dat %>% filter(satisfied != "", !is.na(satisfied)) %>%
+  ggplot(aes(x = satisfied)) +
+    geom_bar() + 
+    ggtitle("Were you satisfied?")
+```
+
+How satisfied are people with our products? Seems custom dashboards and stmo are the least satisifed, but part of that might be because they get used more often, and these heavy users expect more. There is also not much support for custom dashboards.
+
+```{r, echo=FALSE}
+dat %>%
+  mutate(products = strsplit(products, ", ")) %>%
+  unnest(products) %>%
+  group_by(products) %>%
+  summarize(fraction_satisfied = sum(grepl("Yes", satisfied)) / length(satisfied)) %>%
+  ungroup() %>%
+  arrange(fraction_satisfied) %>%
+  ggplot(aes(x = products, y = fraction_satisfied)) +
+    geom_bar(stat="identity") +
+    theme(axis.text.x = element_text(angle = 330, hjust = 0.1))
+```
+
+What questions are people answering?
+
+```{r, echo=FALSE}
+dat %>%
+  mutate(questions = strsplit(questions, ", ")) %>%
+  unnest(questions) %>%
+  group_by(questions) %>%
+  summarize(count = length(questions)) %>%
+  filter(count > 1) %>%
+  ggplot(aes(x = questions, y = count)) +
+    geom_bar(stat="identity") +
+    theme(axis.text.x = element_text(angle = 330, hjust = 0.1))
+```
+
+Are they using different features per question?
+Interesting that in every group, histograms are the most used product. Metrics data has stmo tied for second, with atmo fourth. Regression alerting focuses on TMO, with automated alerting coming in third, which makes sense.
+
+```{r, echo=FALSE}
+
+allowed_questions <- dat %>%
+  mutate(questions = strsplit(questions, ", ")) %>%
+  unnest(questions) %>%
+  group_by(questions) %>%
+  summarize(count = length(questions)) %>%
+  filter(count > 1) %>%
+  select(questions)
+
+allowed_products <- dat %>%
+  mutate(products = strsplit(products, ", ")) %>%
+  unnest(products) %>%
+  group_by(products) %>%
+  summarize(count = length(products)) %>%
+  filter(count > 1) %>%
+  select(products)
+
+dat %>%
+  mutate(products = strsplit(products, ", ")) %>%
+  unnest(products) %>%
+  mutate(questions = strsplit(questions, ", ")) %>%
+  unnest(questions) %>%
+  filter(sapply(questions, grepl, x=allowed_questions), sapply(products, grepl, x=allowed_products)) %>%
+  ggplot(aes(x = products)) +
+    geom_bar(stat="count") +
+    theme(axis.text.x = element_text(angle = 330, hjust = 0.1)) + 
+    facet_wrap( ~ questions, ncol = 3)
+```
+
+Did people get timely responses when they needed help?
+
+```{r, echo=FALSE}
+dat %>%
+  filter(timely_response != "") %>%
+  ggplot(aes(x = timely_response)) +
+    geom_bar(stat = "count")
+```
+
+#Fill-in answers
+
+I tried to tease from each like and dislike what their key points were. I have a histogram of those here. Note a few things: People are happy to have access to the data, TMO is confusing to use and limited (they often want to do MOAR!), and people want better documentation (which we know). Next steps is take each of these responses and tease apart bugs and feature requests, and see if they seem like things we should work on. I've started doing that in the original spreadsheet.
+
+```{r, echo=FALSE}
+dat %>%
+  mutate(likes = strsplit(like_short, ", ")) %>%
+  unnest(likes) %>%
+  ggplot(aes(x = likes)) +
+    geom_bar(stat = "count") +
+    ggtitle("What do you like about TMO?") + 
+    theme(axis.text.x = element_text(angle = 330, hjust = 0.1))
+
+```
+
+```{r, echo=FALSE}
+
+dat %>%
+  mutate(dislikes = strsplit(dislike_short, ", ")) %>%
+  unnest(dislikes) %>%
+  ggplot(aes(x = dislikes)) +
+    geom_bar(stat = "count") + 
+    theme(axis.text.x = element_text(angle = 330, hjust = 0.1)) +
+    ggtitle("What do you dislike?") 
+
+```
+
+
+This plot is trying to tease out dislikes per product. It seems like 1) documentation is a big issue for STMO, and 2) histogram users find TMO confusing.
+
+```{r, echo=FALSE, fig.height=10}
+
+dat %>%
+  mutate(dislikes = strsplit(dislike_short, ", ")) %>%
+  unnest(dislikes) %>%
+  mutate(products = strsplit(products, ", ")) %>%
+  unnest(products) %>%
+  filter(sapply(products, grepl, allowed_products)) %>%
+  ggplot(aes(x = dislikes)) + 
+    geom_bar(stat = "count") +
+    facet_wrap(~ products, ncol = 1) +
+    theme(axis.text.x = element_text(angle = 330, hjust = 0.1))
+    
+```
+
