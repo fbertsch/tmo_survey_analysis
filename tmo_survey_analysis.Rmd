@@ -5,6 +5,8 @@ date: "October 11, 2016"
 output: html_document
 ---
 
+This document outlines the results from the TMO (telemetry.mozilla.org) survey which went out to all of firefox-dev in late September. Our goal is to determine user satisfaction (where our users are internal to Mozilla), identify difficulties, and develop next steps for our platform.
+
 ```{r setup, include=FALSE}
 library(dplyr)
 library(ggplot2)
@@ -43,7 +45,7 @@ ggplot(dat, aes(x = has_used, fill=user_type)) +
   ggtitle("Total Usage")
 ```
 
-Next break up usage per product, by role. Here we can see the egineer use TMO, and do some custom analysis on *tmo, while the managers mainly use stmo.
+Next break up usage per product, by role. Here we can see the engineers use TMO (histograms, evolutions), and do some custom analysis on [as]tmo, while the managers mainly use stmo.
 
 ```{r, echo=FALSE}
 dat %>%
@@ -57,13 +59,14 @@ dat %>%
     ggtitle("Usage per product - role")
 ```
 
-Why haven't people use? Might be because they don't know enough about the platform.
+Why haven't people used these tools? Might be because they don't know enough about the platform.
 
 ```{r, echo=FALSE}
 
 ggplot(dat, aes(x = has_used, fill=knows_help)) + 
   geom_bar(stat="count") + 
-  ggtitle("Comparison of use platform or haven't, and know where help is or don't")
+  ggtitle("Comparison of those who use the platform and those who don't") +
+  xlab("Have they used the platform?")
 ```
 
 
@@ -87,7 +90,7 @@ dat %>%
   ggplot(aes(x = frequency)) +
     geom_bar(stat="count") +
     theme(axis.text.x = element_text(angle = 330, hjust = 0.1)) + 
-    ggtitle("Histogram of frequency of use of data platform")
+    ggtitle("Histogram of frequency of use of data platform (any product)")
 ```
     
 How many products do they use? It seems most people branch out a bit to find what they need.
@@ -99,10 +102,10 @@ dat %>%
   mutate(product_use_count = sapply(product_use_count, function(p) if (p == 0) {"0"} else if (p == 1) {"1"} else {"2+"})) %>%
   ggplot(aes(x = product_use_count)) +
     geom_bar(stat="count") +
-    ggtitle("Histogram of number of products used per person") + ylab("Number of Products Used")
+    ggtitle("Histogram of number of products used per person") + xlab("Number of Products Used")
 ```
 
-What is the frequency of use across products? The heaviest consistent users are custom dashboards and stmo.
+What is the frequency of use across products? The heaviest consistent users are custom dashboards and stmo, while histograms/evolutions are used with less frequency. We need to determine if this is because it's difficult to get what you're looking for using histograms/evolutions (and thus avoided), or if there's simply not a need to use histograms/evolutions as often.
 
 ```{r, echo=FALSE}
 dat %>%
@@ -110,11 +113,12 @@ dat %>%
   unnest(products) %>%
   mutate(frequency = strsplit(frequency, ", ")) %>%
   unnest(frequency) %>%
+  mutate(frequency = factor(frequency, levels = c("Daily", "Once or twice a week", "Once or twice a month", "Sporadically"))) %>%
   ggplot(aes(x = frequency)) +
     geom_bar(stat="count") +
     theme(axis.text.x = element_text(angle = 330, hjust = 0.1)) +
     facet_wrap(~ products, ncol = 3) +
-    ylab("Frequency of Use")
+    xlab("Frequency of Use")
 ```
 
 How satisfied were users overall?
@@ -138,8 +142,10 @@ dat %>%
   arrange(fraction_satisfied) %>%
   ggplot(aes(x = products, y = fraction_satisfied)) +
     geom_bar(stat="identity") +
-    theme(axis.text.x = element_text(angle = 330, hjust = 0.1))
+    theme(axis.text.x = element_text(angle = 330, hjust = 0.1)) +
+    ylab("Fraction Satisfied")
 ```
+
 
 What questions are people answering?
 
@@ -186,6 +192,73 @@ dat %>%
     geom_bar(stat="count") +
     theme(axis.text.x = element_text(angle = 330, hjust = 0.1)) + 
     facet_wrap( ~ questions, ncol = 3)
+```
+
+The same data, just flipped products and questions, to see what questions people are asking per product:
+
+```{r, echo=FALSE}
+#see http://stackoverflow.com/questions/13297155/add-floating-axis-labels-in-facet-wrap-plot
+library(grid)
+facetAdjust <- function(x, pos = c("up", "down"), 
+                        newpage = is.null(vp), vp = NULL)
+{
+  # part of print.ggplot
+  ggplot2:::set_last_plot(x)
+  if(newpage)
+    grid.newpage()
+  pos <- match.arg(pos)
+  p <- ggplot_build(x)
+  gtable <- ggplot_gtable(p)
+  # finding dimensions
+  dims <- apply(p$panel$layout[2:3], 2, max)
+  nrow <- dims[1]
+  ncol <- dims[2]
+  # number of panels in the plot
+  panels <- sum(grepl("panel", names(gtable$grobs)))
+  space <- ncol * nrow
+  # missing panels
+  n <- space - panels
+  # checking whether modifications are needed
+  if(panels != space){
+    # indices of panels to fix
+    idx <- (space - ncol - n + 1):(space - ncol)
+    # copying x-axis of the last existing panel to the chosen panels 
+    # in the row above
+    gtable$grobs[paste0("axis_b",idx)] <- list(gtable$grobs[[paste0("axis_b",panels)]])
+    if(pos == "down"){
+      # if pos == down then shifting labels down to the same level as 
+      # the x-axis of last panel
+      rows <- grep(paste0("axis_b\\-[", idx[1], "-", idx[n], "]"), 
+                   gtable$layout$name)
+      lastAxis <- grep(paste0("axis_b\\-", panels), gtable$layout$name)
+      gtable$layout[rows, c("t","b")] <- gtable$layout[lastAxis, c("t")]
+    }
+  }
+  # again part of print.ggplot, plotting adjusted version
+  if(is.null(vp)){
+    grid.draw(gtable)
+  }
+  else{
+    if (is.character(vp)) 
+      seekViewport(vp)
+    else pushViewport(vp)
+    grid.draw(gtable)
+    upViewport()
+  }
+  invisible(p)
+}
+
+d <- dat %>%
+  mutate(products = strsplit(products, ", ")) %>%
+  unnest(products) %>%
+  mutate(questions = strsplit(questions, ", ")) %>%
+  unnest(questions) %>%
+  filter(sapply(questions, grepl, x=allowed_questions), sapply(products, grepl, x=allowed_products)) %>%
+  ggplot(aes(x = questions)) +
+    geom_bar(stat="count") +
+    theme(axis.text.x = element_text(angle = 330, hjust = 0.1)) + 
+    facet_wrap( ~ products, ncol = 3)
+facetAdjust(d)
 ```
 
 Did people get timely responses when they needed help?
